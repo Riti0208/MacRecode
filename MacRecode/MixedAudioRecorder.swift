@@ -100,12 +100,12 @@ public class MixedAudioRecorder: ObservableObject {
         // 並行でシステム音声とマイク録音を開始
         try await withThrowingTaskGroup(of: Void.self) { group in
             // システム音声録音タスク
-            group.addTask { [weak self] in
+            group.addTask { @MainActor [weak self] in
                 try await self?.systemAudioRecorder.startSystemAudioRecording(to: systemURL)
             }
             
             // マイク録音タスク
-            group.addTask { [weak self] in
+            group.addTask { @MainActor [weak self] in
                 try await self?.microphoneRecorder.startRecording(to: micURL)
             }
             
@@ -124,12 +124,12 @@ public class MixedAudioRecorder: ObservableObject {
         // 並行で録音を停止
         await withTaskGroup(of: Void.self) { group in
             // システム音声録音停止
-            group.addTask { [weak self] in
+            group.addTask { @MainActor [weak self] in
                 self?.systemAudioRecorder.stopRecording()
             }
             
             // マイク録音停止
-            group.addTask { [weak self] in
+            group.addTask { @MainActor [weak self] in
                 self?.microphoneRecorder.stopRecording()
             }
             
