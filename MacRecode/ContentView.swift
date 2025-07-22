@@ -28,8 +28,7 @@ struct ContentView: View {
                 Picker("録音モード", selection: $selectedRecordingMode) {
                     Text("システム音声のみ").tag(RecordingMode.systemAudioOnly)
                     Text("マイクのみ").tag(RecordingMode.microphoneOnly)
-                    Text("システム音声+マイク").tag(RecordingMode.mixedRecording)
-                        .foregroundColor(.gray) // 未実装のため無効化
+                    Text("システム音声+マイク").tag(RecordingMode.mixedRecording) // 実装済みのため有効化
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .disabled(audioRecorder.isRecording || isStartingRecording)
@@ -83,18 +82,8 @@ struct ContentView: View {
                         isStartingRecording = true
                         Task {
                             do {
-                                switch selectedRecordingMode {
-                                case .systemAudioOnly:
-                                    try await audioRecorder.startSystemAudioRecording()
-                                case .microphoneOnly:
-                                    try await audioRecorder.startMicrophoneRecording()
-                                case .mixedRecording:
-                                    // TODO: 未実装 - 将来的にミックス録音を実装
-                                    errorMessage = "システム音声+マイクのミックス録音は現在開発中です"
-                                    showingError = true
-                                    isStartingRecording = false
-                                    return
-                                }
+                                // 新しい統一インターフェースを使用
+                                try await audioRecorder.startRecordingWithMode()
                                 errorMessage = nil
                             } catch {
                                 errorMessage = error.localizedDescription
@@ -118,13 +107,15 @@ struct ContentView: View {
                 case .microphoneOnly:
                     Text("マイクからの音声のみを録音します。\n初回起動時はマイクアクセスの権限許可が必要です。")
                 case .mixedRecording:
-                    Text("システム音声とマイクを同時録音します。\nヘッドフォン/イヤホンの使用を推奨します。")
+                    Text("システム音声とマイクを同時録音します。\nヘッドフォン/イヤホンの使用を強く推奨します。")
+                        .foregroundColor(.primary)
                 }
                 
                 if selectedRecordingMode == .mixedRecording {
-                    Text("※ ミックス録音は現在開発中です")
+                    Text("⚠️ エコー防止のため、必ずヘッドフォンをご使用ください")
                         .font(.caption2)
                         .foregroundColor(.orange)
+                        .fontWeight(.medium)
                 }
             }
             .font(.caption)
