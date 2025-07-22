@@ -41,9 +41,13 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private var captureSession: SCStream?
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
-    private var mixedRecorder: MixedAudioRecorder?
+    // ミックス録音時の一時ファイルURL
+    private var systemTempURL: URL?
+    private var micTempURL: URL?
+    private var finalMixedURL: URL?
     private let logger = Logger(subsystem: "com.example.MacRecode", category: "SystemAudioRecorder")
     private let recordingQueue = DispatchQueue(label: "com.example.MacRecode.recording", qos: .userInitiated)
+    private var lastAudioLogTime: Date?
     
     public override init() {
         super.init()
@@ -216,7 +220,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         // リソースをクリーンアップ
         audioEngine = nil
-        mixedRecorder = nil
+        systemTempURL = nil
+        micTempURL = nil
+        finalMixedURL = nil
         
         // 状態を更新
         isRecording = false
@@ -312,15 +318,23 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("Starting system audio recording to: \(url.path)")
         
         // 画面録画権限チェック  
-        logger.info("Checking recording permissions...")
+        logger.info("🔐 Checking screen recording permissions...")
         let hasPermission = await checkRecordingPermission()
-        logger.info("Permission check result: \(hasPermission)")
+        logger.info("🔐 Permission check result: \(hasPermission)")
         
-        guard hasPermission else {
+        if !hasPermission {
             let preflightResult = CGPreflightScreenCaptureAccess()
-            logger.error("Permission denied. Preflight result: \(preflightResult)")
-            throw RecordingError.permissionDenied("Preflight: \(preflightResult)")
+            logger.error("🚫 Screen recording permission denied. Preflight: \(preflightResult)")
+            
+            // より詳細な権限チェック
+            if !preflightResult {
+                logger.error("⚠️  Please grant Screen Recording permission in System Settings > Privacy & Security > Screen Recording")
+            }
+            
+            throw RecordingError.permissionDenied("Screen Recording permission required. Check System Settings > Privacy & Security > Screen Recording")
         }
+        
+        logger.info("✅ Screen recording permission confirmed")
         
         // 指定されたURLを使用
         let recordingURL = url
@@ -400,22 +414,27 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             }
             logger.info("Using display: \(display.displayID)")
             
-            // 最もシンプルなフィルター設定
-            let filter = SCContentFilter(display: display, excludingWindows: [])
+            // システム音声キャプチャ用のフィルター設定
+            // 全てのアプリケーションの音声を含める
+            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
             let configuration = SCStreamConfiguration()
             
-            // オーディオのみの最小設定
+            // システム音声キャプチャ設定
             configuration.capturesAudio = true
             configuration.sampleRate = 44100
             configuration.channelCount = 2
-            configuration.excludesCurrentProcessAudio = true
+            configuration.excludesCurrentProcessAudio = true // 自分のアプリの音声は除外
             
             // ビデオ設定は最小に（オーディオのみでも必要）
             configuration.width = 100
             configuration.height = 100
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
             
-            logger.info("Creating SCStream with audio-only config...")
+            logger.info("Creating SCStream with system audio config...")
+            logger.info("Audio capture enabled: \(configuration.capturesAudio)")
+            logger.info("Sample rate: \(configuration.sampleRate), Channels: \(configuration.channelCount)")
+            logger.info("Excludes current process audio: \(configuration.excludesCurrentProcessAudio)")
+            
             captureSession = SCStream(filter: filter, configuration: configuration, delegate: self)
             
             guard let stream = captureSession else {
@@ -549,10 +568,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         isRecording = true
         
         // 一時ファイルのパスを保存（停止時のミックス処理のため）
-        mixedRecorder = MixedAudioRecorder()
-        mixedRecorder?.systemAudioTempURL = systemTempURL
-        mixedRecorder?.microphoneTempURL = micTempURL
-        mixedRecorder?.currentRecordingURL = finalMixedURL
+        self.systemTempURL = systemTempURL
+        self.micTempURL = micTempURL
+        self.finalMixedURL = finalMixedURL
         
         logger.info("Mixed recording started successfully")
     }
@@ -573,9 +591,6 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     
     public func stopMixedRecording() async throws {
         guard isRecording else { return }
-        guard let mixedRecorder = mixedRecorder else { 
-            throw RecordingError.setupFailed("Mixed recorder not available")
-        }
         
         logger.info("Stopping mixed recording...")
         
@@ -597,9 +612,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         audioEngine = nil
         
         // 音声ファイルをミックス
-        guard let systemURL = mixedRecorder.systemAudioTempURL,
-              let micURL = mixedRecorder.microphoneTempURL,
-              let outputURL = mixedRecorder.currentRecordingURL else {
+        guard let systemURL = systemTempURL,
+              let micURL = micTempURL,
+              let outputURL = finalMixedURL else {
             throw RecordingError.setupFailed("Missing temp file URLs")
         }
         
@@ -610,7 +625,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         // 状態をリセット
         isRecording = false
-        self.mixedRecorder = nil
+        self.systemTempURL = nil
+        self.micTempURL = nil
+        self.finalMixedURL = nil
         
         logger.info("Mixed recording completed and mixed")
     }
@@ -773,7 +790,22 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
 // MARK: - SCStreamOutput Protocol
 extension SystemAudioRecorder {
     nonisolated public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio else { return }
+        guard type == .audio else { 
+            // ビデオフレームは無視
+            return 
+        }
+        
+        // 音声サンプルの受信をログ（1回のみ出力）
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        if frameCount > 0 {
+            // 最初のサンプルでログ（オーディオが流れていることを確認）
+            Task { @MainActor in
+                if self.lastAudioLogTime == nil {
+                    self.logger.info("📻 System audio capture active: \(frameCount) frames received")
+                    self.lastAudioLogTime = Date()
+                }
+            }
+        }
         
         recordingQueue.async { [weak self] in
             guard let self = self else { return }
@@ -799,7 +831,7 @@ extension SystemAudioRecorder {
         }
     }
     
-    private func createAudioBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+    nonisolated private func createAudioBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
         guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else {
             return nil
         }
