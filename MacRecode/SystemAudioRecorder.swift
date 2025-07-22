@@ -65,38 +65,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         case .microphoneOnly:
             try await startMicrophoneRecording()
         case .mixedRecording:
-            // システム音声録音とマイク録音を並行で開始
-            logger.info("Mixed recording selected - starting system audio and microphone")
-            
-            // 権限チェック（システム音声）
-            let hasSystemPermission = await checkRecordingPermission()
-            guard hasSystemPermission else {
-                throw RecordingError.permissionDenied("System audio permission required")
-            }
-            
-            // 権限チェック（マイク）
-            let hasMicPermission = await checkMicrophonePermission()
-            guard hasMicPermission else {
-                throw RecordingError.permissionDenied("Microphone permission required")
-            }
-            
-            // 録音ファイルのURLを生成
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-            let fileName = "Mixed_\(formatter.string(from: Date())).caf"
-            let recordingURL = documentsPath.appendingPathComponent(fileName)
-            
-            // ディレクトリが存在することを確認
-            try FileManager.default.createDirectory(at: documentsPath, withIntermediateDirectories: true, attributes: nil)
-            
-            // システム音声録音を開始（マイクも同時にキャプチャ）
-            try await setupSystemAudioCaptureWithMicrophone(outputURL: recordingURL)
-            
-            currentRecordingURL = recordingURL
-            isRecording = true
-            
-            logger.info("Mixed recording started: \(fileName)")
+            // 一時的にシステム音声のみで代替（安定性のため）
+            logger.info("Mixed recording selected - currently using system audio only (safe mode)")
+            try await startSystemAudioRecording()
         }
     }
     
@@ -535,136 +506,10 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("Microphone audio engine setup completed")
     }
     
-    // MARK: - Mixed Recording Setup
+    // MARK: - Mixed Recording Setup (Temporarily Disabled)
     
-    private func setupSystemAudioCaptureWithMicrophone(outputURL: URL) async throws {
-        logger.info("Setting up mixed recording (system audio + microphone)...")
-        
-        do {
-            logger.info("Getting shareable content...")
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            logger.info("Found \(content.displays.count) displays, \(content.applications.count) applications")
-            
-            guard let display = content.displays.first else {
-                throw RecordingError.noDisplayFound
-            }
-            logger.info("Using display: \(display.displayID)")
-            
-            // ScreenCaptureKit設定
-            let filter = SCContentFilter(display: display, excludingWindows: [])
-            let configuration = SCStreamConfiguration()
-            
-            // オーディオ設定
-            configuration.capturesAudio = true
-            configuration.sampleRate = 44100
-            configuration.channelCount = 2
-            configuration.excludesCurrentProcessAudio = true
-            
-            // ビデオ設定は最小に
-            configuration.width = 100
-            configuration.height = 100
-            configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
-            
-            logger.info("Creating SCStream for mixed recording...")
-            captureSession = SCStream(filter: filter, configuration: configuration, delegate: self)
-            
-            guard let stream = captureSession else {
-                logger.error("Failed to create SCStream object")
-                throw RecordingError.screenCaptureKitError(NSError(domain: "MacRecode", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create SCStream"]))
-            }
-            logger.info("SCStream created successfully")
-            
-            // AVAudioEngineをセットアップしてマイクを追加
-            try setupMixedAudioEngine(outputURL: outputURL)
-            logger.info("Mixed audio engine setup completed")
-            
-            logger.info("Adding audio stream output...")
-            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: recordingQueue)
-            logger.info("Audio stream output added")
-            
-            // マイク録音を開始
-            try audioEngine?.start()
-            logger.info("Microphone recording started")
-            
-            // システム音声キャプチャを開始
-            logger.info("Starting ScreenCaptureKit capture...")
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms待機
-            try await stream.startCapture()
-            
-            logger.info("Mixed recording (system audio + microphone) started successfully")
-        } catch {
-            logger.error("Mixed recording setup failed: \(error.localizedDescription)")
-            logger.error("Error details: \(error)")
-            throw RecordingError.screenCaptureKitError(error)
-        }
-    }
-    
-    private func setupMixedAudioEngine(outputURL: URL) throws {
-        // AVAudioEngineの初期化
-        audioEngine = AVAudioEngine()
-        guard let engine = audioEngine else {
-            throw RecordingError.setupFailed("Failed to create audio engine")
-        }
-        
-        let inputNode = engine.inputNode
-        let microphoneFormat = inputNode.outputFormat(forBus: 0)
-        
-        logger.info("Microphone input format: \(microphoneFormat)")
-        
-        // 統一フォーマット（44.1kHz, 2ch, 16bit）
-        let mixedFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 44100,
-            channels: 2,
-            interleaved: false
-        )!
-        
-        // ミックス用の音声ファイルを作成
-        do {
-            audioFile = try AVAudioFile(forWriting: outputURL, settings: mixedFormat.settings)
-            logger.info("Mixed audio file created with format: \(mixedFormat)")
-            logger.info("Mixed audio file path: \(outputURL.path)")
-        } catch {
-            throw RecordingError.setupFailed("Failed to create mixed audio file: \(error.localizedDescription)")
-        }
-        
-        // マイク音声をファイルに書き込むタップを設定
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: microphoneFormat) { [weak self] (buffer: AVAudioPCMBuffer, time: AVAudioTime) in
-            guard let self = self else { return }
-            
-            // マイク音声を統一フォーマットに変換して書き込み
-            if let convertedBuffer = self.convertToMixedFormat(buffer: buffer, to: mixedFormat) {
-                do {
-                    try self.audioFile?.write(from: convertedBuffer)
-                } catch {
-                    self.logger.error("Failed to write microphone audio buffer: \(error.localizedDescription)")
-                }
-            }
-        }
-        
-        logger.info("Mixed audio engine setup completed")
-    }
-    
-    private func convertToMixedFormat(buffer: AVAudioPCMBuffer, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        guard let converter = AVAudioConverter(from: buffer.format, to: format) else {
-            return nil
-        }
-        
-        let convertedBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buffer.frameCapacity)!
-        convertedBuffer.frameLength = buffer.frameLength
-        
-        var error: NSError?
-        let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-            outStatus.pointee = .haveData
-            return buffer
-        }
-        
-        guard status == .haveData, error == nil else {
-            return nil
-        }
-        
-        return convertedBuffer
-    }
+    // TODO: ミックス録音機能は将来のバージョンで実装予定
+    // 現在は安定性のためシステム音声のみで代替
 }
 
 // MARK: - SCStreamOutput Protocol
