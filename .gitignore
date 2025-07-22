@@ -1,0 +1,27 @@
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspacedata
+
+# Build products
+build/
+DerivedData/
+
+# User data
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+
+# macOS
+.DS_Store
+*~.nib
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+
+# Test artifacts
+*.gcda
+*.gcno
