@@ -41,6 +41,7 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private var captureSession: SCStream?
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
+    private var mixedRecorder: MixedAudioRecorder?
     private let logger = Logger(subsystem: "com.example.MacRecode", category: "SystemAudioRecorder")
     private let recordingQueue = DispatchQueue(label: "com.example.MacRecode.recording", qos: .userInitiated)
     
@@ -64,9 +65,14 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         case .microphoneOnly:
             try await startMicrophoneRecording()
         case .mixedRecording:
-            // 将来実装: 現在は一時的にシステム音声のみで代替
-            logger.info("Mixed recording selected - currently falling back to system audio")
-            try await startSystemAudioRecording()
+            // MixedAudioRecorderを使用してミックス録音を実行
+            logger.info("Mixed recording selected - using MixedAudioRecorder")
+            mixedRecorder = MixedAudioRecorder()
+            try await mixedRecorder!.startMixedRecording()
+            
+            // 混合録音のURLを設定
+            currentRecordingURL = mixedRecorder!.currentRecordingURL
+            isRecording = true
         }
     }
     
@@ -193,18 +199,40 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         logger.info("録音を停止中...")
         
-        // 音声エンジンを停止
-        if let engine = audioEngine, engine.isRunning {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)  // タップを削除
-            logger.info("Audio engine stopped")
+        // ミックス録音の場合
+        if let mixedRecorder = mixedRecorder {
+            Task {
+                do {
+                    try await mixedRecorder.stopRecording()
+                    currentRecordingURL = mixedRecorder.currentRecordingURL
+                    logger.info("Mixed recording stopped successfully")
+                } catch {
+                    logger.error("Failed to stop mixed recording: \(error)")
+                }
+                self.mixedRecorder = nil
+            }
+        } else {
+            // 通常の録音を停止
+            if let engine = audioEngine, engine.isRunning {
+                engine.stop()
+                engine.inputNode.removeTap(onBus: 0)  // タップを削除
+                logger.info("Audio engine stopped")
+            }
+            
+            // ScreenCaptureKit セッションを停止
+            captureSession?.stopCapture { error in
+                if let error = error {
+                    self.logger.error("Failed to stop capture session: \(error)")
+                }
+            }
+            captureSession = nil
+            
+            // 音声ファイルを閉じる
+            audioFile = nil
+            
+            // リソースをクリーンアップ
+            audioEngine = nil
         }
-        
-        // 音声ファイルを閉じる
-        audioFile = nil
-        
-        // リソースをクリーンアップ
-        audioEngine = nil
         
         // 状態を更新
         isRecording = false
