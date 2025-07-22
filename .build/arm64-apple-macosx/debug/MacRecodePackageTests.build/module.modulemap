@@ -1,0 +1,4 @@
+module MacRecodePackageTests {
+    header "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/MacRecodePackageTests-Swift.h"
+    requires objc
+}

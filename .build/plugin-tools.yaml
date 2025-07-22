@@ -1,0 +1,146 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "MacRecode-arm64-apple-macosx15.0-debug.exe": ["<MacRecode-arm64-apple-macosx15.0-debug.exe>"]
+  "MacRecode-arm64-apple-macosx15.0-debug.module": ["<MacRecode-arm64-apple-macosx15.0-debug.module>"]
+  "MacRecodePackageTests-arm64-apple-macosx15.0-debug.module": ["<MacRecodePackageTests-arm64-apple-macosx15.0-debug.module>"]
+  "MacRecodePackageTests-arm64-apple-macosx15.0-debug.test": ["<MacRecodePackageTests-arm64-apple-macosx15.0-debug.test>"]
+  "MacRecodeTests-arm64-apple-macosx15.0-debug.module": ["<MacRecodeTests-arm64-apple-macosx15.0-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<MacRecode-arm64-apple-macosx15.0-debug.exe>","<MacRecode-arm64-apple-macosx15.0-debug.module>"]
+  "test": ["<MacRecode-arm64-apple-macosx15.0-debug.exe>","<MacRecode-arm64-apple-macosx15.0-debug.module>","<MacRecodePackageTests-arm64-apple-macosx15.0-debug.test>","<MacRecodeTests-arm64-apple-macosx15.0-debug.module>"]
+default: "main"
+nodes:
+  "/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/riti/develop/private/app/MacRecode/Tests/MacRecodeTests/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode":
+    is-mutated: true
+commands:
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode-entitlement.plist"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode-entitlement.plist"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/SystemAudioRecorder.swift","/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/main.swift"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/sources"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/sources"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.product/Objects.LinkFileList"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.derived/runner.swift"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/sources"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/sources"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.derived/runner.swift":
+    tool: test-entry-point-tool
+    inputs: []
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.derived/runner.swift"]
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/runner.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/SystemAudioRecorderTests.swift.o"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.product/Objects.LinkFileList"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/riti/develop/private/app/MacRecode/Tests/MacRecodeTests/SystemAudioRecorderTests.swift"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/sources"]
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/sources"
+
+  "/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+
+  "<MacRecode-arm64-apple-macosx15.0-debug.exe>":
+    tool: phony
+    inputs: ["<MacRecode-arm64-apple-macosx15.0-debug.exe-CodeSigning>"]
+    outputs: ["<MacRecode-arm64-apple-macosx15.0-debug.exe>"]
+
+  "<MacRecode-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecode.swiftmodule"]
+    outputs: ["<MacRecode-arm64-apple-macosx15.0-debug.module>"]
+
+  "<MacRecodePackageTests-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/runner.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodePackageTests.swiftmodule"]
+    outputs: ["<MacRecodePackageTests-arm64-apple-macosx15.0-debug.module>"]
+
+  "<MacRecodePackageTests-arm64-apple-macosx15.0-debug.test>":
+    tool: phony
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.xctest/Contents/MacOS/MacRecodePackageTests"]
+    outputs: ["<MacRecodePackageTests-arm64-apple-macosx15.0-debug.test>"]
+
+  "<MacRecodeTests-arm64-apple-macosx15.0-debug.module>":
+    tool: phony
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/SystemAudioRecorderTests.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodeTests.swiftmodule"]
+    outputs: ["<MacRecodeTests-arm64-apple-macosx15.0-debug.module>"]
+
+  "C.MacRecode-arm64-apple-macosx15.0-debug.exe":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.product/Objects.LinkFileList"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/MacRecode"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug","-o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode","-module-name","MacRecode","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_MacRecode_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.product/Objects.LinkFileList","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecode.swiftmodule","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.MacRecode-arm64-apple-macosx15.0-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode-entitlement.plist"]
+    outputs: ["<MacRecode-arm64-apple-macosx15.0-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/MacRecode"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode-entitlement.plist","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode"]
+
+  "C.MacRecode-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/SystemAudioRecorder.swift","/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/main.swift","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/sources"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecode.swiftmodule"]
+    description: "Compiling Swift Module 'MacRecode' (2 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","MacRecode","-emit-dependencies","-emit-module","-emit-module-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecode.swiftmodule","-output-file-map","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/output-file-map.json","-incremental","-c","@/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/sources","-I","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-enable-batch-mode","-index-store-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j10","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","MacRecode_main","-swift-version","5","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","macrecode"]
+
+  "C.MacRecodePackageTests-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.derived/runner.swift","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodeTests.swiftmodule","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/sources"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/runner.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodePackageTests.swiftmodule"]
+    description: "Compiling Swift Module 'MacRecodePackageTests' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","MacRecodePackageTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodePackageTests.swiftmodule","-output-file-map","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/sources","-I","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-enable-batch-mode","-index-store-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j10","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/MacRecodePackageTests-Swift.h","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","macrecode"]
+
+  "C.MacRecodePackageTests-arm64-apple-macosx15.0-debug.test":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/SystemAudioRecorder.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode.build/main.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.build/runner.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/SystemAudioRecorderTests.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.product/Objects.LinkFileList"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.xctest/Contents/MacOS/MacRecodePackageTests"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/MacRecodePackageTests.xctest/Contents/MacOS/MacRecodePackageTests"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug","-o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.xctest/Contents/MacOS/MacRecodePackageTests","-module-name","MacRecodePackageTests","-Xlinker","-no_warn_duplicate_libraries","-Xlinker","-bundle","-Xlinker","-rpath","-Xlinker","@loader_path/../../../","@/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodePackageTests.product/Objects.LinkFileList","-target","arm64-apple-macosx14.0","-Xlinker","-add_ast_path","-Xlinker","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecode.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodePackageTests.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodeTests.swiftmodule","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.MacRecodeTests-arm64-apple-macosx15.0-debug.module":
+    tool: shell
+    inputs: ["/Users/riti/develop/private/app/MacRecode/Tests/MacRecodeTests/SystemAudioRecorderTests.swift","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecode","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/sources"]
+    outputs: ["/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/SystemAudioRecorderTests.swift.o","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodeTests.swiftmodule"]
+    description: "Compiling Swift Module 'MacRecodeTests' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","MacRecodeTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules/MacRecodeTests.swiftmodule","-output-file-map","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/MacRecodeTests.build/sources","-I","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx14.0","-enable-batch-mode","-index-store-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j10","-DSWIFT_PACKAGE","-DDEBUG","-module-cache-path","/Users/riti/develop/private/app/MacRecode/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-swift-version","5","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","macrecode"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/riti/develop/private/app/MacRecode/Sources/MacRecode/","/Users/riti/develop/private/app/MacRecode/Tests/MacRecodeTests/","/Users/riti/develop/private/app/MacRecode/Package.swift","/Users/riti/develop/private/app/MacRecode/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
