@@ -71,8 +71,20 @@ struct ContentView: View {
                 if audioRecorder.isRecording {
                     Button("録音停止") {
                         tempRecordingURL = audioRecorder.currentRecordingURL
-                        audioRecorder.stopRecording()
-                        showingSaveDialog = true
+                        Task {
+                            if audioRecorder.recordingMode == .mixedRecording {
+                                do {
+                                    try await audioRecorder.stopMixedRecording()
+                                } catch {
+                                    errorMessage = "ミックス録音停止エラー: \(error.localizedDescription)"
+                                    showingError = true
+                                    return
+                                }
+                            } else {
+                                audioRecorder.stopRecording()
+                            }
+                            showingSaveDialog = true
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -129,37 +141,65 @@ struct ContentView: View {
             isPresented: $showingSaveDialog,
             document: AudioFileDocument(url: tempRecordingURL),
             contentType: UTType(filenameExtension: "caf") ?? .audio,
-            defaultFilename: tempRecordingURL?.deletingPathExtension().lastPathComponent ?? "SystemAudio_\(DateFormatter.yyyyMMdd_HHmmss.string(from: Date()))"
+            defaultFilename: generateDefaultFilename()
         ) { result in
             switch result {
             case .success(let savedURL):
                 if let tempURL = tempRecordingURL {
+                    // 元ファイルの存在確認
+                    guard FileManager.default.fileExists(atPath: tempURL.path) else {
+                        DispatchQueue.main.async {
+                            errorMessage = "録音ファイルが見つかりません"
+                            showingError = true
+                        }
+                        tempRecordingURL = nil
+                        return
+                    }
+                    
                     do {
                         // セキュリティスコープ付きリソースアクセス
-                        let _ = savedURL.startAccessingSecurityScopedResource()
-                        defer { savedURL.stopAccessingSecurityScopedResource() }
+                        let didStartAccessing = savedURL.startAccessingSecurityScopedResource()
+                        defer { 
+                            if didStartAccessing {
+                                savedURL.stopAccessingSecurityScopedResource()
+                            }
+                        }
                         
                         // 既存ファイルがある場合は削除してから移動
                         if FileManager.default.fileExists(atPath: savedURL.path) {
                             try FileManager.default.removeItem(at: savedURL)
                         }
                         
-                        try FileManager.default.moveItem(at: tempURL, to: savedURL)
+                        // ファイルを移動ではなくコピーして、元ファイルは保持
+                        try FileManager.default.copyItem(at: tempURL, to: savedURL)
                         
                         DispatchQueue.main.async {
                             // 成功通知を表示
                             successMessage = "録音ファイルを保存しました: \(savedURL.lastPathComponent)"
                             showingSuccess = true
                         }
+                        
+                        // 元ファイルをクリーンアップ
+                        try? FileManager.default.removeItem(at: tempURL)
+                        
                     } catch {
-                        errorMessage = "ファイルの保存に失敗しました: \(error.localizedDescription)"
-                        showingError = true
+                        DispatchQueue.main.async {
+                            errorMessage = "ファイルの保存に失敗しました: \(error.localizedDescription)"
+                            showingError = true
+                        }
                     }
                     tempRecordingURL = nil
+                } else {
+                    DispatchQueue.main.async {
+                        errorMessage = "録音ファイルのURLが無効です"
+                        showingError = true
+                    }
                 }
             case .failure(let error):
-                errorMessage = error.localizedDescription
-                showingError = true
+                DispatchQueue.main.async {
+                    errorMessage = "ファイルエクスポートエラー: \(error.localizedDescription)"
+                    showingError = true
+                }
                 tempRecordingURL = nil
             }
         }
@@ -172,6 +212,26 @@ struct ContentView: View {
             Button("OK") { }
         } message: {
             Text(successMessage ?? "")
+        }
+    }
+    
+    // ファイル名生成のヘルパーメソッド
+    private func generateDefaultFilename() -> String {
+        if let tempURL = tempRecordingURL {
+            return tempURL.deletingPathExtension().lastPathComponent
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let timestamp = formatter.string(from: Date())
+            
+            switch selectedRecordingMode {
+            case .systemAudioOnly:
+                return "SystemAudio_\(timestamp)"
+            case .microphoneOnly:
+                return "Microphone_\(timestamp)"
+            case .mixedRecording:
+                return "Mixed_\(timestamp)"
+            }
         }
     }
 }
@@ -201,12 +261,16 @@ struct AudioFileDocument: FileDocument {
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        guard let url = url else {
-            throw CocoaError(.fileWriteNoPermission)
+        guard let url = url, FileManager.default.fileExists(atPath: url.path) else {
+            throw CocoaError(.fileNoSuchFile)
         }
         
-        let data = try Data(contentsOf: url)
-        return FileWrapper(regularFileWithContents: data)
+        do {
+            let data = try Data(contentsOf: url)
+            return FileWrapper(regularFileWithContents: data)
+        } catch {
+            throw CocoaError(.fileReadCorruptFile)
+        }
     }
 }
 
