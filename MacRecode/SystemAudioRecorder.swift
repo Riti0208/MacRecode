@@ -55,6 +55,21 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         recordingMode = mode
     }
     
+    // MARK: - Mixed Recording Integration
+    
+    public func startRecordingWithMode() async throws {
+        switch recordingMode {
+        case .systemAudioOnly:
+            try await startSystemAudioRecording()
+        case .microphoneOnly:
+            try await startMicrophoneRecording()
+        case .mixedRecording:
+            // 将来実装: 現在は一時的にシステム音声のみで代替
+            logger.info("Mixed recording selected - currently falling back to system audio")
+            try await startSystemAudioRecording()
+        }
+    }
+    
     // MARK: - Microphone Recording Methods
     
     public func checkMicrophonePermission() async -> Bool {
