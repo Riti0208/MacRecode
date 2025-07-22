@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var showingSaveDialog = false
     @State private var tempRecordingURL: URL?
     @State private var isStartingRecording = false
+    @State private var selectedRecordingMode: RecordingMode = .systemAudioOnly
     
     var body: some View {
         VStack(spacing: 30) {
@@ -18,6 +19,24 @@ struct ContentView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundColor(.primary)
+            
+            // 録音モード選択
+            VStack(spacing: 10) {
+                Text("録音モード")
+                    .font(.headline)
+                
+                Picker("録音モード", selection: $selectedRecordingMode) {
+                    Text("システム音声のみ").tag(RecordingMode.systemAudioOnly)
+                    Text("マイクのみ").tag(RecordingMode.microphoneOnly)
+                    Text("システム音声+マイク").tag(RecordingMode.mixedRecording)
+                        .foregroundColor(.gray) // 未実装のため無効化
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .disabled(audioRecorder.isRecording || isStartingRecording)
+                .onChange(of: selectedRecordingMode) { newMode in
+                    audioRecorder.setRecordingMode(newMode)
+                }
+            }
             
             // 状態表示
             VStack(spacing: 15) {
@@ -64,7 +83,18 @@ struct ContentView: View {
                         isStartingRecording = true
                         Task {
                             do {
-                                try await audioRecorder.startSystemAudioRecording()
+                                switch selectedRecordingMode {
+                                case .systemAudioOnly:
+                                    try await audioRecorder.startSystemAudioRecording()
+                                case .microphoneOnly:
+                                    try await audioRecorder.startMicrophoneRecording()
+                                case .mixedRecording:
+                                    // TODO: 未実装 - 将来的にミックス録音を実装
+                                    errorMessage = "システム音声+マイクのミックス録音は現在開発中です"
+                                    showingError = true
+                                    isStartingRecording = false
+                                    return
+                                }
                                 errorMessage = nil
                             } catch {
                                 errorMessage = error.localizedDescription
@@ -81,11 +111,26 @@ struct ContentView: View {
             }
             
             // 説明文
-            Text("システム全体の音声を録音します。\n初回起動時は「画面収録」の権限許可が必要です。")
-                .font(.caption)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .padding(.horizontal)
+            VStack(spacing: 5) {
+                switch selectedRecordingMode {
+                case .systemAudioOnly:
+                    Text("システム全体の音声を録音します。\n初回起動時は「画面収録」の権限許可が必要です。")
+                case .microphoneOnly:
+                    Text("マイクからの音声のみを録音します。\n初回起動時はマイクアクセスの権限許可が必要です。")
+                case .mixedRecording:
+                    Text("システム音声とマイクを同時録音します。\nヘッドフォン/イヤホンの使用を推奨します。")
+                }
+                
+                if selectedRecordingMode == .mixedRecording {
+                    Text("※ ミックス録音は現在開発中です")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                }
+            }
+            .font(.caption)
+            .multilineTextAlignment(.center)
+            .foregroundColor(.secondary)
+            .padding(.horizontal)
         }
         .padding(40)
         .frame(minWidth: 400, minHeight: 300)

@@ -3,6 +3,12 @@ import AVFoundation
 import ScreenCaptureKit
 import OSLog
 
+public enum RecordingMode {
+    case microphoneOnly
+    case systemAudioOnly
+    case mixedRecording
+}
+
 public enum RecordingError: LocalizedError {
     case permissionDenied(String)
     case noDisplayFound
@@ -30,6 +36,7 @@ public enum RecordingError: LocalizedError {
 public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput {
     @Published public private(set) var isRecording = false
     @Published public private(set) var currentRecordingURL: URL?
+    @Published public private(set) var recordingMode: RecordingMode = .systemAudioOnly
     
     private var captureSession: SCStream?
     private var audioEngine: AVAudioEngine?
@@ -39,6 +46,82 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     
     public override init() {
         super.init()
+    }
+    
+    // MARK: - Recording Mode Management
+    
+    public func setRecordingMode(_ mode: RecordingMode) {
+        guard !isRecording else { return }
+        recordingMode = mode
+    }
+    
+    // MARK: - Microphone Recording Methods
+    
+    public func checkMicrophonePermission() async -> Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        logger.info("Current microphone permission status: \(status.rawValue)")
+        
+        switch status {
+        case .authorized:
+            logger.info("Microphone permission already granted")
+            return true
+        case .notDetermined:
+            logger.info("Requesting microphone permission...")
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            logger.info("Microphone permission granted: \(granted)")
+            return granted
+        case .denied, .restricted:
+            logger.error("Microphone permission denied or restricted")
+            return false
+        @unknown default:
+            logger.error("Unknown microphone permission status")
+            return false
+        }
+    }
+    
+    public func startMicrophoneRecording() async throws {
+        guard !isRecording else {
+            throw RecordingError.recordingInProgress
+        }
+        
+        // マイク権限をチェック
+        let hasPermission = await checkMicrophonePermission()
+        guard hasPermission else {
+            throw RecordingError.permissionDenied("Microphone permission required")
+        }
+        
+        // 録音ファイルのURLを生成（Documentsフォルダに保存）
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let fileName = "Microphone_\(formatter.string(from: Date())).caf"
+        let recordingURL = documentsPath.appendingPathComponent(fileName)
+        
+        // ディレクトリが存在することを確認
+        try FileManager.default.createDirectory(at: documentsPath, withIntermediateDirectories: true, attributes: nil)
+        
+        do {
+            // マイク録音のセットアップ
+            try setupMicrophoneAudioEngine(outputURL: recordingURL)
+            
+            // 録音開始
+            try audioEngine?.start()
+            
+            // 状態を更新
+            currentRecordingURL = recordingURL
+            isRecording = true
+            
+            logger.info("マイク録音を開始しました: \(fileName)")
+            logger.info("保存場所: \(recordingURL.path)")
+        } catch {
+            // エラー時はクリーンアップ
+            stopRecording()
+            if let error = error as? RecordingError {
+                throw error
+            } else {
+                throw RecordingError.setupFailed(error.localizedDescription)
+            }
+        }
     }
     
     public func startRecording() async throws {
@@ -363,6 +446,39 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         }
         
         logger.info("System audio file setup completed")
+    }
+    
+    private func setupMicrophoneAudioEngine(outputURL: URL) throws {
+        // AVAudioEngineの初期化
+        audioEngine = AVAudioEngine()
+        guard let engine = audioEngine else {
+            throw RecordingError.setupFailed("Failed to create audio engine")
+        }
+        
+        let inputNode = engine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        
+        logger.info("Microphone input audio format: \(recordingFormat)")
+        
+        // 入力フォーマットをそのまま使用してファイル作成
+        do {
+            audioFile = try AVAudioFile(forWriting: outputURL, settings: recordingFormat.settings)
+            logger.info("Microphone audio file created with format: \(recordingFormat)")
+            logger.info("Microphone audio file path: \(outputURL.path)")
+        } catch {
+            throw RecordingError.setupFailed("Failed to create microphone audio file: \(error.localizedDescription)")
+        }
+        
+        // 音声データをファイルに書き込むタップを設定
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] (buffer: AVAudioPCMBuffer, time: AVAudioTime) in
+            do {
+                try self?.audioFile?.write(from: buffer)
+            } catch {
+                self?.logger.error("Failed to write microphone audio buffer: \(error.localizedDescription)")
+            }
+        }
+        
+        logger.info("Microphone audio engine setup completed")
     }
 }
 

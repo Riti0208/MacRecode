@@ -82,4 +82,51 @@ final class SystemAudioRecorderTests: XCTestCase {
         let fileSize = attributes[.size] as? Int64 ?? 0
         XCTAssertGreaterThan(fileSize, 0, "録音ファイルにデータが含まれていません")
     }
+    
+    // MARK: - Microphone Recording Tests
+    
+    // Test 5: マイクのみ録音機能のテスト
+    func testMicrophoneOnlyRecording() async throws {
+        // Given: 録音していない状態
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertNil(recorder.currentRecordingURL)
+        
+        // When: マイクのみ録音を開始（この機能はまだ実装されていない）
+        try await recorder.startMicrophoneRecording()
+        
+        // Then: 録音状態になる
+        XCTAssertTrue(recorder.isRecording)
+        XCTAssertNotNil(recorder.currentRecordingURL)
+        
+        // When: 録音を停止
+        recorder.stopRecording()
+        
+        // Then: 録音が停止する
+        XCTAssertFalse(recorder.isRecording)
+    }
+    
+    // Test 6: 録音モードの設定テスト
+    func testRecordingModeSettings() {
+        // Given: 録音していない状態
+        XCTAssertFalse(recorder.isRecording)
+        
+        // When/Then: 録音モードを設定（この機能はまだ実装されていない）
+        recorder.setRecordingMode(.microphoneOnly)
+        XCTAssertEqual(recorder.recordingMode, .microphoneOnly)
+        
+        recorder.setRecordingMode(.systemAudioOnly)
+        XCTAssertEqual(recorder.recordingMode, .systemAudioOnly)
+        
+        recorder.setRecordingMode(.mixedRecording)
+        XCTAssertEqual(recorder.recordingMode, .mixedRecording)
+    }
+    
+    // Test 7: マイク権限チェックテスト
+    func testMicrophonePermissionCheck() async {
+        // When: マイク権限をチェック（この機能はまだ実装されていない）
+        let hasPermission = await recorder.checkMicrophonePermission()
+        
+        // Then: 権限状態が取得できる
+        XCTAssertNotNil(hasPermission, "マイク権限の状態を取得できませんでした")
+    }
 }
