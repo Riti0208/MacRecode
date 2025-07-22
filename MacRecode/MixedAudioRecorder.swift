@@ -6,7 +6,7 @@ import OSLog
 @MainActor
 public class MixedAudioRecorder: ObservableObject {
     @Published public private(set) var isRecording = false
-    @Published public private(set) var currentRecordingURL: URL?
+    @Published public var currentRecordingURL: URL?
     @Published public private(set) var recordingMode: RecordingMode = .mixedRecording
     
     // 内部録音コンポーネント
@@ -87,7 +87,9 @@ public class MixedAudioRecorder: ObservableObject {
         
         // 一時ファイルURLを生成
         let tempDir = FileManager.default.temporaryDirectory
-        let timestamp = DateFormatter.yyyyMMdd_HHmmss.string(from: Date())
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
         
         systemAudioTempURL = tempDir.appendingPathComponent("system_\(timestamp).caf")
         microphoneTempURL = tempDir.appendingPathComponent("mic_\(timestamp).caf")

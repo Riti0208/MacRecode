@@ -65,9 +65,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         case .microphoneOnly:
             try await startMicrophoneRecording()
         case .mixedRecording:
-            // 一時的にシステム音声のみで代替（安定性のため）
-            logger.info("Mixed recording selected - currently using system audio only (safe mode)")
-            try await startSystemAudioRecording()
+            // 真のミックス録音: システム音声とマイクを並行録音
+            logger.info("Mixed recording selected - starting dual audio capture")
+            try await startMixedRecording()
         }
     }
     
@@ -202,8 +202,10 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         }
         
         // ScreenCaptureKit セッションを停止
-        captureSession?.stopCapture { error in
-            if let error = error {
+        Task {
+            do {
+                try await captureSession?.stopCapture()
+            } catch {
                 self.logger.error("Failed to stop capture session: \(error)")
             }
         }
@@ -506,10 +508,266 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("Microphone audio engine setup completed")
     }
     
-    // MARK: - Mixed Recording Setup (Temporarily Disabled)
+    // MARK: - Mixed Recording Implementation
     
-    // TODO: ミックス録音機能は将来のバージョンで実装予定
-    // 現在は安定性のためシステム音声のみで代替
+    private func startMixedRecording() async throws {
+        guard !isRecording else {
+            throw RecordingError.recordingInProgress
+        }
+        
+        logger.info("Starting mixed recording (system audio + microphone)...")
+        
+        // 両方の権限をチェック
+        let hasSystemPermission = await checkRecordingPermission()
+        guard hasSystemPermission else {
+            throw RecordingError.permissionDenied("System audio permission required")
+        }
+        
+        let hasMicPermission = await checkMicrophonePermission()
+        guard hasMicPermission else {
+            throw RecordingError.permissionDenied("Microphone permission required")
+        }
+        
+        // 一時ファイルのURLを生成
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
+        
+        let systemTempURL = documentsPath.appendingPathComponent("system_\(timestamp).caf")
+        let micTempURL = documentsPath.appendingPathComponent("mic_\(timestamp).caf")
+        let finalMixedURL = documentsPath.appendingPathComponent("Mixed_\(timestamp).caf")
+        
+        // ディレクトリを確保
+        try FileManager.default.createDirectory(at: documentsPath, withIntermediateDirectories: true, attributes: nil)
+        
+        // 並行録音を開始
+        try await startDualRecording(systemURL: systemTempURL, micURL: micTempURL)
+        
+        // 状態を更新
+        currentRecordingURL = finalMixedURL
+        isRecording = true
+        
+        // 一時ファイルのパスを保存（停止時のミックス処理のため）
+        mixedRecorder = MixedAudioRecorder()
+        mixedRecorder?.systemAudioTempURL = systemTempURL
+        mixedRecorder?.microphoneTempURL = micTempURL
+        mixedRecorder?.currentRecordingURL = finalMixedURL
+        
+        logger.info("Mixed recording started successfully")
+    }
+    
+    private func startDualRecording(systemURL: URL, micURL: URL) async throws {
+        logger.info("Setting up dual recording...")
+        
+        // システム音声録音をセットアップ
+        try await setupSystemAudioCapture(outputURL: systemURL)
+        
+        // マイク録音をセットアップ  
+        try setupMicrophoneAudioEngine(outputURL: micURL)
+        
+        // 両方を同時に開始
+        try audioEngine?.start()
+        logger.info("Dual recording setup completed")
+    }
+    
+    public func stopMixedRecording() async throws {
+        guard isRecording else { return }
+        guard let mixedRecorder = mixedRecorder else { 
+            throw RecordingError.setupFailed("Mixed recorder not available")
+        }
+        
+        logger.info("Stopping mixed recording...")
+        
+        // 基本録音を停止
+        if let engine = audioEngine, engine.isRunning {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+        }
+        
+        Task {
+            do {
+                try await captureSession?.stopCapture()
+            } catch {
+                self.logger.error("Failed to stop capture session: \(error)")
+            }
+        }
+        captureSession = nil
+        audioFile = nil
+        audioEngine = nil
+        
+        // 音声ファイルをミックス
+        guard let systemURL = mixedRecorder.systemAudioTempURL,
+              let micURL = mixedRecorder.microphoneTempURL,
+              let outputURL = mixedRecorder.currentRecordingURL else {
+            throw RecordingError.setupFailed("Missing temp file URLs")
+        }
+        
+        try await mixAudioFiles(systemURL: systemURL, micURL: micURL, outputURL: outputURL)
+        
+        // 一時ファイルをクリーンアップ
+        cleanupTempFiles(systemURL: systemURL, micURL: micURL)
+        
+        // 状態をリセット
+        isRecording = false
+        self.mixedRecorder = nil
+        
+        logger.info("Mixed recording completed and mixed")
+    }
+    
+    private func mixAudioFiles(systemURL: URL, micURL: URL, outputURL: URL) async throws {
+        logger.info("Mixing audio files...")
+        
+        // AVAudioEngineでオフラインミキシング
+        let engine = AVAudioEngine()
+        let mixer = engine.mainMixerNode
+        
+        // プレイヤーノードを作成
+        let systemPlayer = AVAudioPlayerNode()
+        let micPlayer = AVAudioPlayerNode()
+        
+        engine.attach(systemPlayer)
+        engine.attach(micPlayer)
+        
+        // 音声ファイルを読み込み
+        guard FileManager.default.fileExists(atPath: systemURL.path) else {
+            throw RecordingError.setupFailed("System audio file not found")
+        }
+        
+        guard FileManager.default.fileExists(atPath: micURL.path) else {
+            throw RecordingError.setupFailed("Microphone file not found")
+        }
+        
+        let systemFile = try AVAudioFile(forReading: systemURL)
+        let micFile = try AVAudioFile(forReading: micURL)
+        
+        // 出力フォーマット（統一）
+        guard let outputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 44100,
+            channels: 2,
+            interleaved: false
+        ) else {
+            throw RecordingError.setupFailed("Failed to create output format")
+        }
+        
+        // ミキサーに接続
+        engine.connect(systemPlayer, to: mixer, format: outputFormat)
+        engine.connect(micPlayer, to: mixer, format: outputFormat)
+        
+        // 出力ファイルを作成
+        let outputFile = try AVAudioFile(forWriting: outputURL, settings: outputFormat.settings)
+        
+        // 簡易ミキシング: システム音声ファイルをベースに、マイク音声を追加
+        try await performSimpleMixing(
+            systemFile: systemFile,
+            micFile: micFile,
+            outputFile: outputFile,
+            outputFormat: outputFormat
+        )
+        
+        logger.info("Audio mixing completed")
+    }
+    
+    private func performSimpleMixing(
+        systemFile: AVAudioFile,
+        micFile: AVAudioFile,
+        outputFile: AVAudioFile,
+        outputFormat: AVAudioFormat
+    ) async throws {
+        
+        let maxFrames = max(systemFile.length, micFile.length)
+        let bufferSize: AVAudioFrameCount = 4096
+        
+        // フォーマット互換性チェック
+        guard AVAudioConverter(from: systemFile.processingFormat, to: outputFormat) != nil else {
+            throw RecordingError.setupFailed("Failed to create system audio converter")
+        }
+        
+        guard AVAudioConverter(from: micFile.processingFormat, to: outputFormat) != nil else {
+            throw RecordingError.setupFailed("Failed to create microphone converter")
+        }
+        
+        var framesProcessed: AVAudioFramePosition = 0
+        
+        while framesProcessed < maxFrames {
+            let framesToProcess = min(bufferSize, AVAudioFrameCount(maxFrames - framesProcessed))
+            
+            // システム音声バッファ
+            let systemBuffer = AVAudioPCMBuffer(pcmFormat: systemFile.processingFormat, frameCapacity: framesToProcess) ?? AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: framesToProcess)!
+            let micBuffer = AVAudioPCMBuffer(pcmFormat: micFile.processingFormat, frameCapacity: framesToProcess) ?? AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: framesToProcess)!
+            
+            // 出力バッファ
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: framesToProcess) else {
+                throw RecordingError.setupFailed("Failed to create output buffer")
+            }
+            
+            // ファイルから読み込み
+            systemFile.framePosition = framesProcessed
+            micFile.framePosition = framesProcessed
+            
+            var actualSystemFrames: AVAudioFrameCount = 0
+            var actualMicFrames: AVAudioFrameCount = 0
+            
+            if framesProcessed < systemFile.length {
+                try systemFile.read(into: systemBuffer, frameCount: framesToProcess)
+                actualSystemFrames = systemBuffer.frameLength
+            }
+            
+            if framesProcessed < micFile.length {
+                try micFile.read(into: micBuffer, frameCount: framesToProcess)
+                actualMicFrames = micBuffer.frameLength
+            }
+            
+            // 簡易ミキシング: システム音声をベースにマイクを追加
+            outputBuffer.frameLength = max(actualSystemFrames, actualMicFrames)
+            
+            if let systemFloatData = systemBuffer.floatChannelData,
+               let micFloatData = micBuffer.floatChannelData,
+               let outputFloatData = outputBuffer.floatChannelData {
+                
+                for channel in 0..<Int(outputFormat.channelCount) {
+                    for frame in 0..<Int(outputBuffer.frameLength) {
+                        var mixedSample: Float = 0.0
+                        
+                        // システム音声（75%の音量）
+                        if channel < systemBuffer.format.channelCount && frame < actualSystemFrames {
+                            mixedSample += systemFloatData[channel][frame] * 0.75
+                        }
+                        
+                        // マイク音声（50%の音量）
+                        if channel < micBuffer.format.channelCount && frame < actualMicFrames {
+                            mixedSample += micFloatData[min(channel, Int(micBuffer.format.channelCount)-1)][frame] * 0.5
+                        }
+                        
+                        // クリッピング防止
+                        outputFloatData[channel][frame] = max(-1.0, min(1.0, mixedSample))
+                    }
+                }
+            }
+            
+            // ファイルに書き込み
+            try outputFile.write(from: outputBuffer)
+            
+            framesProcessed += AVAudioFramePosition(outputBuffer.frameLength)
+        }
+    }
+    
+    private func cleanupTempFiles(systemURL: URL, micURL: URL) {
+        do {
+            if FileManager.default.fileExists(atPath: systemURL.path) {
+                try FileManager.default.removeItem(at: systemURL)
+                logger.info("Cleaned up system audio temp file")
+            }
+            
+            if FileManager.default.fileExists(atPath: micURL.path) {
+                try FileManager.default.removeItem(at: micURL)
+                logger.info("Cleaned up microphone temp file")
+            }
+        } catch {
+            logger.error("Failed to cleanup temp files: \(error)")
+        }
+    }
 }
 
 // MARK: - SCStreamOutput Protocol
@@ -520,14 +778,16 @@ extension SystemAudioRecorder {
         recordingQueue.async { [weak self] in
             guard let self = self else { return }
             
+            // CMSampleBufferをAVAudioPCMBufferに変換（同期的に実行）
+            guard let audioBuffer = self.createAudioBuffer(from: sampleBuffer) else {
+                Task { @MainActor in
+                    self.logger.error("Failed to create audio buffer from sample buffer")
+                }
+                return
+            }
+            
             Task { @MainActor in
                 guard self.isRecording else { return }
-                
-                // CMSampleBufferをAVAudioPCMBufferに変換
-                guard let audioBuffer = self.createAudioBuffer(from: sampleBuffer) else {
-                    self.logger.error("Failed to create audio buffer from sample buffer")
-                    return
-                }
                 
                 // ファイルに書き込み
                 do {
