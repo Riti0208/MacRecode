@@ -41,6 +41,11 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private var captureSession: SCStream?
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
+    
+    // ミックス録音用の分離された変数
+    private var microphoneEngine: AVAudioEngine?
+    private var microphoneFile: AVAudioFile?
+    
     // ミックス録音時の一時ファイルURL
     private var systemTempURL: URL?
     private var micTempURL: URL?
@@ -220,6 +225,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         // リソースをクリーンアップ
         audioEngine = nil
+        microphoneEngine = nil
+        microphoneFile = nil
         systemTempURL = nil
         micTempURL = nil
         finalMixedURL = nil
@@ -473,7 +480,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     }
     
     private func setupSystemAudioFile(outputURL: URL) throws {
-        // システム音声用の設定（PCMフォーマット）
+        logger.info("🗂 Creating system audio file: \(outputURL.lastPathComponent)")
+        
+        // より互換性の高いCAFフォーマット設定
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: 44100.0,
@@ -484,10 +493,26 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             AVLinearPCMIsNonInterleaved: false
         ]
         
+        // ディレクトリの存在確認と作成
+        let parentDir = outputURL.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: parentDir.path) {
+            try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true, attributes: nil)
+            logger.info("📁 Created directory: \(parentDir.path)")
+        }
+        
+        // 既存ファイルがあれば削除
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+            logger.info("🗑 Removed existing file: \(outputURL.lastPathComponent)")
+        }
+        
         do {
             audioFile = try AVAudioFile(forWriting: outputURL, settings: settings)
-            logger.info("System audio file created: \(outputURL.path)")
+            logger.info("✅ System audio file created successfully: \(outputURL.path)")
         } catch {
+            logger.error("❌ Failed to create system audio file: \(error)")
+            logger.error("   URL: \(outputURL.path)")
+            logger.error("   Settings: \(settings)")
             throw RecordingError.setupFailed("Failed to create system audio file: \(error.localizedDescription)")
         }
         
@@ -495,10 +520,12 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     }
     
     private func setupMicrophoneAudioEngine(outputURL: URL) throws {
-        // AVAudioEngineの初期化
-        audioEngine = AVAudioEngine()
-        guard let engine = audioEngine else {
-            throw RecordingError.setupFailed("Failed to create audio engine")
+        logger.info("🎤 Creating microphone audio engine...")
+        
+        // ミックス録音用の分離されたAVAudioEngineを初期化
+        microphoneEngine = AVAudioEngine()
+        guard let engine = microphoneEngine else {
+            throw RecordingError.setupFailed("Failed to create microphone audio engine")
         }
         
         let inputNode = engine.inputNode
@@ -506,25 +533,37 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         logger.info("Microphone input audio format: \(recordingFormat)")
         
-        // 入力フォーマットをそのまま使用してファイル作成
+        // ディレクトリの存在確認
+        let parentDir = outputURL.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: parentDir.path) {
+            try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true, attributes: nil)
+        }
+        
+        // 既存ファイルがあれば削除
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+            logger.info("🗑 Removed existing microphone file: \(outputURL.lastPathComponent)")
+        }
+        
+        // マイク用音声ファイルを作成（分離された変数を使用）
         do {
-            audioFile = try AVAudioFile(forWriting: outputURL, settings: recordingFormat.settings)
-            logger.info("Microphone audio file created with format: \(recordingFormat)")
-            logger.info("Microphone audio file path: \(outputURL.path)")
+            microphoneFile = try AVAudioFile(forWriting: outputURL, settings: recordingFormat.settings)
+            logger.info("✅ Microphone audio file created: \(outputURL.path)")
         } catch {
+            logger.error("❌ Failed to create microphone audio file: \(error)")
             throw RecordingError.setupFailed("Failed to create microphone audio file: \(error.localizedDescription)")
         }
         
-        // 音声データをファイルに書き込むタップを設定
+        // 音声データをファイルに書き込むタップを設定（分離された変数を使用）
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] (buffer: AVAudioPCMBuffer, time: AVAudioTime) in
             do {
-                try self?.audioFile?.write(from: buffer)
+                try self?.microphoneFile?.write(from: buffer)
             } catch {
                 self?.logger.error("Failed to write microphone audio buffer: \(error.localizedDescription)")
             }
         }
         
-        logger.info("Microphone audio engine setup completed")
+        logger.info("✅ Microphone audio engine setup completed")
     }
     
     // MARK: - Mixed Recording Implementation
@@ -547,18 +586,23 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             throw RecordingError.permissionDenied("Microphone permission required")
         }
         
-        // 一時ファイルのURLを生成
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // 一時ファイルのURLを生成（デスクトップに保存して確認しやすくする）
+        let desktopPath = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = formatter.string(from: Date())
         
-        let systemTempURL = documentsPath.appendingPathComponent("system_\(timestamp).caf")
-        let micTempURL = documentsPath.appendingPathComponent("mic_\(timestamp).caf")
-        let finalMixedURL = documentsPath.appendingPathComponent("Mixed_\(timestamp).caf")
+        let systemTempURL = desktopPath.appendingPathComponent("system_\(timestamp).caf")
+        let micTempURL = desktopPath.appendingPathComponent("mic_\(timestamp).caf")
+        let finalMixedURL = desktopPath.appendingPathComponent("Mixed_\(timestamp).caf")
+        
+        logger.info("🗂 Mixed recording temp files:")
+        logger.info("  System: \(systemTempURL.path)")
+        logger.info("  Mic: \(micTempURL.path)")
+        logger.info("  Final: \(finalMixedURL.path)")
         
         // ディレクトリを確保
-        try FileManager.default.createDirectory(at: documentsPath, withIntermediateDirectories: true, attributes: nil)
+        try FileManager.default.createDirectory(at: desktopPath, withIntermediateDirectories: true, attributes: nil)
         
         // 並行録音を開始
         try await startDualRecording(systemURL: systemTempURL, micURL: micTempURL)
@@ -576,17 +620,24 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     }
     
     private func startDualRecording(systemURL: URL, micURL: URL) async throws {
-        logger.info("Setting up dual recording...")
+        logger.info("🔧 Setting up dual recording...")
         
-        // システム音声録音をセットアップ
+        // 順次セットアップ（同時実行による競合を避ける）
+        logger.info("📻 Setting up system audio capture...")
         try await setupSystemAudioCapture(outputURL: systemURL)
+        logger.info("✅ System audio capture setup complete")
         
-        // マイク録音をセットアップ  
+        // 少し待機してからマイクをセットアップ
+        try await Task.sleep(nanoseconds: 200_000_000) // 200ms待機
+        
+        logger.info("🎤 Setting up microphone recording...")
         try setupMicrophoneAudioEngine(outputURL: micURL)
+        logger.info("✅ Microphone recording setup complete")
         
-        // 両方を同時に開始
-        try audioEngine?.start()
-        logger.info("Dual recording setup completed")
+        // マイク録音エンジンを開始（分離されたエンジンを使用）
+        logger.info("🚀 Starting microphone audio engine...")
+        try microphoneEngine?.start()
+        logger.info("✅ Dual recording setup completed successfully")
     }
     
     public func stopMixedRecording() async throws {
@@ -594,22 +645,28 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         
         logger.info("Stopping mixed recording...")
         
-        // 基本録音を停止
-        if let engine = audioEngine, engine.isRunning {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
+        // マイク録音エンジンを停止（分離されたエンジン）
+        if let micEngine = microphoneEngine, micEngine.isRunning {
+            micEngine.stop()
+            micEngine.inputNode.removeTap(onBus: 0)
+            logger.info("✅ Microphone engine stopped")
         }
         
+        // システム音声録音を停止
         Task {
             do {
                 try await captureSession?.stopCapture()
+                self.logger.info("✅ System audio capture stopped")
             } catch {
                 self.logger.error("Failed to stop capture session: \(error)")
             }
         }
+        
+        // リソースをクリーンアップ
         captureSession = nil
         audioFile = nil
-        audioEngine = nil
+        microphoneFile = nil
+        microphoneEngine = nil
         
         // 音声ファイルをミックス
         guard let systemURL = systemTempURL,
