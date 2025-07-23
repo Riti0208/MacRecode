@@ -7,6 +7,7 @@ public enum RecordingMode {
     case microphoneOnly
     case systemAudioOnly
     case mixedRecording
+    case catapSynchronized // CATap API による同期録音
 }
 
 public enum RecordingError: LocalizedError {
@@ -44,36 +45,36 @@ public class AudioBufferManager: ObservableObject {
     
     public func addSystemAudioBuffer(_ buffer: AVAudioPCMBuffer) {
         bufferQueue.async { [weak self] in
-            guard let strongSelf = self else { return }
+            guard let self = self else { return }
             // バッファのコピーを作成して保存
-            if let copy = strongSelf.copyBuffer(buffer) {
-                strongSelf.systemAudioBuffers.append(copy)
+            if let copy = self.copyBuffer(buffer) {
+                self.systemAudioBuffers.append(copy)
             }
         }
     }
     
     public func addMicrophoneBuffer(_ buffer: AVAudioPCMBuffer) {
         bufferQueue.async { [weak self] in
-            guard let strongSelf = self else { return }
+            guard let self = self else { return }
             // バッファのコピーを作成して保存
-            if let copy = strongSelf.copyBuffer(buffer) {
-                strongSelf.microphoneBuffers.append(copy)
+            if let copy = self.copyBuffer(buffer) {
+                self.microphoneBuffers.append(copy)
             }
         }
     }
     
     public func createMixedAudioFile(to outputURL: URL) async throws {
-        logger.info("🎵 Creating mixed audio file with \(systemAudioBuffers.count) system buffers and \(microphoneBuffers.count) microphone buffers")
+        logger.info("🎵 Creating mixed audio file with \(self.systemAudioBuffers.count) system buffers and \(self.microphoneBuffers.count) microphone buffers")
         
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             bufferQueue.async { [weak self] in
-                guard let strongSelf = self else {
+                guard let self = self else {
                     continuation.resume(throwing: RecordingError.setupFailed("AudioBufferManager was deallocated"))
                     return
                 }
                 
                 do {
-                    try strongSelf.performMixing(to: outputURL)
+                    try self.performMixing(to: outputURL)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -97,12 +98,12 @@ public class AudioBufferManager: ObservableObject {
         let outputFile = try AVAudioFile(forWriting: outputURL, settings: outputFormat.settings)
         
         // バッファの長さを調整してミックス
-        let maxBuffers = max(systemAudioBuffers.count, microphoneBuffers.count)
+        let maxBuffers = max(self.systemAudioBuffers.count, self.microphoneBuffers.count)
         
         for i in 0..<maxBuffers {
             // システム音声とマイクのバッファを取得
-            let systemBuffer = i < systemAudioBuffers.count ? systemAudioBuffers[i] : nil
-            let micBuffer = i < microphoneBuffers.count ? microphoneBuffers[i] : nil
+            let systemBuffer = i < self.systemAudioBuffers.count ? self.systemAudioBuffers[i] : nil
+            let micBuffer = i < self.microphoneBuffers.count ? self.microphoneBuffers[i] : nil
             
             // ミックス用の出力バッファを作成
             let frameCount = max(systemBuffer?.frameLength ?? 0, micBuffer?.frameLength ?? 0)
@@ -159,8 +160,9 @@ public class AudioBufferManager: ObservableObject {
     
     public func clearBuffers() {
         bufferQueue.async { [weak self] in
-            self?.systemAudioBuffers.removeAll()
-            self?.microphoneBuffers.removeAll()
+            guard let self = self else { return }
+            self.systemAudioBuffers.removeAll()
+            self.microphoneBuffers.removeAll()
         }
     }
 }
@@ -207,6 +209,10 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             // 真のミックス録音: システム音声とマイクを並行録音
             logger.info("Mixed recording selected - starting dual audio capture")
             try await startMixedRecording()
+        case .catapSynchronized:
+            // CATap API統合録音はContentViewで直接処理される
+            logger.info("CATap synchronized recording mode selected - handled by ContentView")
+            throw RecordingError.setupFailed("CATap recording should be handled directly by ContentView")
         }
     }
     
