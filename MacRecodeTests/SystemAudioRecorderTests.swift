@@ -3,6 +3,7 @@ import ScreenCaptureKit
 import AVFoundation
 @testable import MacRecode
 
+@MainActor
 final class SystemAudioRecorderTests: XCTestCase {
     var recorder: SystemAudioRecorder!
     
@@ -132,86 +133,61 @@ final class SystemAudioRecorderTests: XCTestCase {
     
     // MARK: - Mixed Recording Tests
     
-    // Test 8: MixedAudioRecorderクラスの初期化テスト
-    func testMixedAudioRecorderInitialization() {
-        // Given: MixedAudioRecorderが初期化される
-        let mixedRecorder = MixedAudioRecorder()
+    // Test 8: ミックス録音機能の基本テスト
+    func testMixedRecordingBasicFunctionality() async throws {
+        // Given: 録音していない状態
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertNil(recorder.currentRecordingURL)
         
-        // Then: 適切な初期状態になっている
-        XCTAssertFalse(mixedRecorder.isRecording, "初期状態では録音していない")
-        XCTAssertNil(mixedRecorder.currentRecordingURL, "初期状態では録音URLがnil")
-        XCTAssertEqual(mixedRecorder.recordingMode, .mixedRecording, "録音モードがmixedRecordingになっている")
-    }
-    
-    // Test 9: ミックス録音の開始と停止テスト
-    func testMixedRecordingStartStop() async throws {
-        // Given: MixedAudioRecorderが初期化されている
-        let mixedRecorder = MixedAudioRecorder()
-        XCTAssertFalse(mixedRecorder.isRecording)
-        
-        // When: ミックス録音を開始
-        try await mixedRecorder.startMixedRecording()
+        // When: ミックス録音を開始（最小実装）
+        try await recorder.startMixedRecording()
         
         // Then: 録音状態になる
-        XCTAssertTrue(mixedRecorder.isRecording, "ミックス録音が開始されている")
-        XCTAssertNotNil(mixedRecorder.currentRecordingURL, "録音URLが設定されている")
+        XCTAssertTrue(recorder.isRecording)
+        XCTAssertNotNil(recorder.currentRecordingURL)
         
         // When: 録音を停止
-        try await mixedRecorder.stopRecording()
+        recorder.stopRecording()
         
-        // Then: 録音が停止し、ミックスファイルが作成される
-        XCTAssertFalse(mixedRecorder.isRecording, "録音が停止している")
-        XCTAssertNotNil(mixedRecorder.currentRecordingURL, "ミックスされたファイルのURLが残っている")
+        // Then: 録音が停止する
+        XCTAssertFalse(recorder.isRecording)
     }
     
-    // Test 10: 並行録音機能のテスト
-    func testConcurrentRecording() async throws {
-        // Given: MixedAudioRecorderが初期化されている
-        let mixedRecorder = MixedAudioRecorder()
+    // Test 9: AVAudioMixerNodeの設定テスト
+    func testAudioMixerNodeConfiguration() async throws {
+        // When: ミックス録音のセットアップを実行
+        try await recorder.setupMixedRecording()
         
-        // When: 並行録音を開始
-        try await mixedRecorder.startConcurrentRecording()
-        
-        // Then: システム音声とマイクの両方の録音が開始される
-        XCTAssertTrue(mixedRecorder.systemAudioRecorder.isRecording, "システム音声録音が開始されている")
-        XCTAssertTrue(mixedRecorder.microphoneRecorder.isRecording, "マイク録音が開始されている")
-        
-        // 短時間録音
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
-        
-        // When: 並行録音を停止
-        try await mixedRecorder.stopConcurrentRecording()
-        
-        // Then: 両方の録音が停止し、一時ファイルが作成される
-        XCTAssertFalse(mixedRecorder.systemAudioRecorder.isRecording, "システム音声録音が停止している")
-        XCTAssertFalse(mixedRecorder.microphoneRecorder.isRecording, "マイク録音が停止している")
-        XCTAssertNotNil(mixedRecorder.systemAudioTempURL, "システム音声の一時ファイルが作成されている")
-        XCTAssertNotNil(mixedRecorder.microphoneTempURL, "マイクの一時ファイルが作成されている")
+        // Then: ミキサーノードが正しく設定されている
+        XCTAssertTrue(recorder.hasMixerNodeConfigured(), "ミキサーノードが設定されていません")
+        XCTAssertTrue(recorder.hasSystemAudioPlayerNodeConnected(), "システム音声プレイヤーノードが接続されていません")
+        XCTAssertTrue(recorder.hasMicrophoneInputConnected(), "マイク入力が接続されていません")
     }
     
-    // Test 11: 音声合成機能のテスト
-    func testAudioMixing() async throws {
-        // Given: システム音声とマイクの一時ファイルが存在する
-        let mixedRecorder = MixedAudioRecorder()
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let systemTempURL = documentsPath.appendingPathComponent("system_temp.caf")
-        let micTempURL = documentsPath.appendingPathComponent("mic_temp.caf")
+    // Test 10: 同期開始メカニズムのテスト
+    func testSynchronizedStartMechanism() async throws {
+        // When: 同期開始でミックス録音を実行
+        let startTime = try await recorder.startMixedRecordingWithSync()
         
-        // Mock用の一時ファイルを作成（実際のテストではダミーデータ）
-        // TODO: テスト用の音声ファイル作成
+        // Then: 両方のオーディオソースが同じタイムスタンプで開始される
+        XCTAssertNotNil(startTime, "開始タイムスタンプが取得できません")
+        XCTAssertTrue(recorder.isSystemAudioSynchronized(), "システム音声が同期開始されていません")
+        XCTAssertTrue(recorder.isMicrophoneSynchronized(), "マイクが同期開始されていません")
         
-        // When: 音声をミックス
-        let mixedURL = try await mixedRecorder.mixAudioStreams(
-            systemURL: systemTempURL,
-            microphoneURL: micTempURL
-        )
+        recorder.stopRecording()
+    }
+    
+    // Test 11: 統一フォーマットの確認テスト
+    func testUnifiedAudioFormat() async throws {
+        // Given: ミックス録音が設定済み
+        try await recorder.setupMixedRecording()
         
-        // Then: ミックスされた音声ファイルが作成される
-        XCTAssertTrue(FileManager.default.fileExists(atPath: mixedURL.path), "ミックスファイルが作成されている")
+        // When: 録音フォーマットを取得
+        let recordingFormat = recorder.getMixedRecordingFormat()
         
-        // ファイルサイズチェック
-        let attributes = try FileManager.default.attributesOfItem(atPath: mixedURL.path)
-        let fileSize = attributes[.size] as? Int64 ?? 0
-        XCTAssertGreaterThan(fileSize, 0, "ミックスファイルにデータが含まれている")
+        // Then: 44.1kHz/2chの統一フォーマット
+        XCTAssertEqual(recordingFormat.sampleRate, 44100.0, "サンプルレートが44.1kHzではありません")
+        XCTAssertEqual(recordingFormat.channelCount, 2, "チャンネル数が2chではありません")
+        XCTAssertNotNil(recordingFormat, "録音フォーマットが設定されていません")
     }
 }

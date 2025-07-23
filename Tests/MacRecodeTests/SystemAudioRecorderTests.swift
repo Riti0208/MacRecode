@@ -38,4 +38,68 @@ final class SystemAudioRecorderTests: XCTestCase {
         // 権限があるかないかに関わらず、結果はBool値であることを確認
         XCTAssertTrue(hasPermission, "最小実装では常にtrueを返す")
     }
+    
+    // MARK: - Mixed Recording Tests
+    
+    func testMixedRecordingBasicFunctionality() async throws {
+        let recorder = SystemAudioRecorder()
+        
+        // Given: 録音していない状態
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertNil(recorder.currentRecordingURL)
+        
+        // When: ミックス録音を開始（最小実装）
+        try await recorder.startMixedRecording()
+        
+        // Then: 録音状態になる
+        XCTAssertTrue(recorder.isRecording)
+        XCTAssertNotNil(recorder.currentRecordingURL)
+        
+        // When: 録音を停止
+        recorder.stopRecording()
+        
+        // Then: 録音が停止する
+        XCTAssertFalse(recorder.isRecording)
+    }
+    
+    func testAudioMixerNodeConfiguration() async throws {
+        let recorder = SystemAudioRecorder()
+        
+        // When: ミックス録音のセットアップを実行
+        try await recorder.setupMixedRecording()
+        
+        // Then: ミキサーノードが正しく設定されている
+        XCTAssertTrue(recorder.hasMixerNodeConfigured(), "ミキサーノードが設定されていません")
+        XCTAssertTrue(recorder.hasSystemAudioPlayerNodeConnected(), "システム音声プレイヤーノードが接続されていません")
+        XCTAssertTrue(recorder.hasMicrophoneInputConnected(), "マイク入力が接続されていません")
+    }
+    
+    func testSynchronizedStartMechanism() async throws {
+        let recorder = SystemAudioRecorder()
+        
+        // When: 同期開始でミックス録音を実行
+        let startTime = try await recorder.startMixedRecordingWithSync()
+        
+        // Then: 両方のオーディオソースが同じタイムスタンプで開始される
+        XCTAssertNotNil(startTime, "開始タイムスタンプが取得できません")
+        XCTAssertTrue(recorder.isSystemAudioSynchronized(), "システム音声が同期開始されていません")
+        XCTAssertTrue(recorder.isMicrophoneSynchronized(), "マイクが同期開始されていません")
+        
+        recorder.stopRecording()
+    }
+    
+    func testUnifiedAudioFormat() async throws {
+        let recorder = SystemAudioRecorder()
+        
+        // Given: ミックス録音が設定済み
+        try await recorder.setupMixedRecording()
+        
+        // When: 録音フォーマットを取得
+        let recordingFormat = recorder.getMixedRecordingFormat()
+        
+        // Then: 44.1kHz/2chの統一フォーマット
+        XCTAssertEqual(recordingFormat.sampleRate, 44100.0, "サンプルレートが44.1kHzではありません")
+        XCTAssertEqual(recordingFormat.channelCount, 2, "チャンネル数が2chではありません")
+        XCTAssertNotNil(recordingFormat, "録音フォーマットが設定されていません")
+    }
 }
