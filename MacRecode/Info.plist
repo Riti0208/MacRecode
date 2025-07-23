@@ -24,6 +24,8 @@
 	<string>このアプリはシステム音声を録音するためにマイクへのアクセスが必要です。</string>
 	<key>NSScreenCaptureDescription</key>
 	<string>このアプリはシステム音声を録音するために画面収録の権限が必要です。</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>このアプリは他のアプリやシステムの音声をキャプチャするためにオーディオ録音の権限が必要です。CATap APIを使用してシステム音声とマイクを同期録音します。</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 </dict>
