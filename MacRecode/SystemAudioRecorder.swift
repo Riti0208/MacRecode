@@ -52,6 +52,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private var finalMixedURL: URL?
     private var pendingSystemFileURL: URL?
     private var shouldCreateSystemFile = false
+    private var pendingMicrophoneFileURL: URL?
+    private var shouldCreateMicrophoneFile = false
     private let logger = Logger(subsystem: "com.example.MacRecode", category: "SystemAudioRecorder")
     private let recordingQueue = DispatchQueue(label: "com.example.MacRecode.recording", qos: .userInitiated)
     private var lastAudioLogTime: Date?
@@ -234,6 +236,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         finalMixedURL = nil
         pendingSystemFileURL = nil
         shouldCreateSystemFile = false
+        pendingMicrophoneFileURL = nil
+        shouldCreateMicrophoneFile = false
         
         // 状態を更新
         isRecording = false
@@ -652,6 +656,24 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true, attributes: nil)
         }
         
+        // ファイル作成を遅延（エンジン開始後に作成）
+        pendingMicrophoneFileURL = outputURL
+        shouldCreateMicrophoneFile = true
+        logger.info("🔄 Microphone audio file creation deferred until engine start")
+        
+        logger.info("✅ Microphone audio engine setup completed")
+    }
+    
+    private func setupMicrophoneAudioFileDelayed(outputURL: URL) throws {
+        logger.info("🗂 Creating microphone audio file (delayed): \(outputURL.lastPathComponent)")
+        
+        guard let engine = microphoneEngine else {
+            throw RecordingError.setupFailed("Microphone engine not initialized")
+        }
+        
+        let inputNode = engine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        
         // 既存ファイルがあれば削除
         if FileManager.default.fileExists(atPath: outputURL.path) {
             try FileManager.default.removeItem(at: outputURL)
@@ -661,10 +683,10 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         // マイク用音声ファイルを作成（分離された変数を使用）
         do {
             microphoneFile = try AVAudioFile(forWriting: outputURL, settings: recordingFormat.settings)
-            logger.info("✅ Microphone audio file created: \(outputURL.path)")
+            logger.info("✅ Microphone audio file created (delayed): \(outputURL.path)")
         } catch {
-            logger.error("❌ Failed to create microphone audio file: \(error)")
-            throw RecordingError.setupFailed("Failed to create microphone audio file: \(error.localizedDescription)")
+            logger.error("❌ Failed to create microphone audio file (delayed): \(error)")
+            throw RecordingError.setupFailed("Failed to create microphone audio file (delayed): \(error.localizedDescription)")
         }
         
         // 音声データをファイルに書き込むタップを設定（分離された変数を使用）
@@ -676,7 +698,7 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
             }
         }
         
-        logger.info("✅ Microphone audio engine setup completed")
+        logger.info("✅ Microphone audio file setup completed (delayed)")
     }
     
     // MARK: - Audio Session Configuration
@@ -758,6 +780,19 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         try microphoneEngine?.start()
         logger.info("✅ Microphone engine started")
         
+        // マイクエンジン開始後にファイルを作成
+        if shouldCreateMicrophoneFile, let micURL = pendingMicrophoneFileURL {
+            do {
+                try setupMicrophoneAudioFileDelayed(outputURL: micURL)
+                shouldCreateMicrophoneFile = false
+                pendingMicrophoneFileURL = nil
+                logger.info("✅ Microphone audio file created after engine start")
+            } catch {
+                logger.error("❌ Failed to create microphone audio file after engine start: \(error)")
+                throw error
+            }
+        }
+        
         // マイクエンジンが完全に開始されるのを待つ
         try await Task.sleep(nanoseconds: 1_000_000_000) // 1秒待機
         
@@ -797,6 +832,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         microphoneEngine = nil
         pendingSystemFileURL = nil
         shouldCreateSystemFile = false
+        pendingMicrophoneFileURL = nil
+        shouldCreateMicrophoneFile = false
         
         // 音声ファイルをミックス
         guard let systemURL = systemTempURL,
