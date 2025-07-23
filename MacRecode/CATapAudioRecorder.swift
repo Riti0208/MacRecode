@@ -32,6 +32,9 @@ public class CATapAudioRecorder: NSObject, ObservableObject {
     
     private let logger = Logger(subsystem: "com.example.MacRecode", category: "CATapAudioRecorder")
     
+    // MARK: - Version Information
+    public static let version = "1.0.0-security-fixed"
+    
     // MARK: - Initialization
     public override init() {
         self.audioQueue = DispatchQueue(label: "com.macrecode.catap.audio", qos: .userInitiated)
