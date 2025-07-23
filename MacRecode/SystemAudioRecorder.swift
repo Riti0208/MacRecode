@@ -50,6 +50,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private var systemTempURL: URL?
     private var micTempURL: URL?
     private var finalMixedURL: URL?
+    private var pendingSystemFileURL: URL?
+    private var shouldCreateSystemFile = false
     private let logger = Logger(subsystem: "com.example.MacRecode", category: "SystemAudioRecorder")
     private let recordingQueue = DispatchQueue(label: "com.example.MacRecode.recording", qos: .userInitiated)
     private var lastAudioLogTime: Date?
@@ -230,6 +232,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         systemTempURL = nil
         micTempURL = nil
         finalMixedURL = nil
+        pendingSystemFileURL = nil
+        shouldCreateSystemFile = false
         
         // 状態を更新
         isRecording = false
@@ -410,6 +414,75 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("Audio engine setup completed")
     }
     
+    private func setupSystemAudioCaptureForMixedRecording(outputURL: URL) async throws {
+        logger.info("🔧 Setting up system audio capture for mixed recording...")
+        
+        do {
+            logger.info("Getting shareable content...")
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            logger.info("Found \(content.displays.count) displays, \(content.applications.count) applications")
+            
+            guard let display = content.displays.first else {
+                throw RecordingError.noDisplayFound
+            }
+            logger.info("Using display: \(display.displayID)")
+            
+            // システム音声キャプチャ用のフィルター設定
+            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+            let configuration = SCStreamConfiguration()
+            
+            // システム音声キャプチャ設定
+            configuration.capturesAudio = true
+            configuration.sampleRate = 44100
+            configuration.channelCount = 2
+            configuration.excludesCurrentProcessAudio = true
+            
+            // ビデオ設定は最小に
+            configuration.width = 100
+            configuration.height = 100
+            configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+            
+            logger.info("Creating SCStream with system audio config...")
+            logger.info("Audio capture enabled: \(configuration.capturesAudio)")
+            logger.info("Sample rate: \(configuration.sampleRate), Channels: \(configuration.channelCount)")
+            
+            captureSession = SCStream(filter: filter, configuration: configuration, delegate: self)
+            
+            guard let stream = captureSession else {
+                logger.error("Failed to create SCStream object")
+                throw RecordingError.screenCaptureKitError(NSError(domain: "MacRecode", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create SCStream"]))
+            }
+            logger.info("SCStream created successfully")
+            
+            // ミックス録音専用のファイルセットアップ（遅延実行）
+            logger.info("Adding audio stream output first...")
+            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: recordingQueue)
+            logger.info("Audio stream output added")
+            
+            // キャプチャ開始
+            logger.info("Starting ScreenCaptureKit capture...")
+            try await stream.startCapture()
+            
+            // ファイル作成を最初のオーディオサンプル受信まで遅延
+            pendingSystemFileURL = outputURL
+            shouldCreateSystemFile = true
+            logger.info("🔄 System audio file creation deferred until first sample")
+            
+            logger.info("ScreenCaptureKit system audio capture started successfully")
+        } catch {
+            logger.error("ScreenCaptureKit setup failed: \(error.localizedDescription)")
+            logger.error("Error details: \(error)")
+            
+            if let nsError = error as NSError? {
+                logger.error("Error domain: \(nsError.domain)")
+                logger.error("Error code: \(nsError.code)")
+                logger.error("Error userInfo: \(nsError.userInfo)")
+            }
+            
+            throw RecordingError.screenCaptureKitError(error)
+        }
+    }
+    
     private func setupSystemAudioCapture(outputURL: URL) async throws {
         do {
             logger.info("Getting shareable content...")
@@ -519,6 +592,46 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("System audio file setup completed")
     }
     
+    private func setupSystemAudioFileDelayed(outputURL: URL) throws {
+        logger.info("🗂 Creating system audio file (delayed): \(outputURL.lastPathComponent)")
+        
+        // シンプルなCAFフォーマット設定（ミックス録音用に最適化）
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 44100.0,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        
+        // ディレクトリの存在確認と作成
+        let parentDir = outputURL.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: parentDir.path) {
+            try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true, attributes: nil)
+            logger.info("📁 Created directory: \(parentDir.path)")
+        }
+        
+        // 既存ファイルがあれば削除
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+            logger.info("🗑 Removed existing file: \(outputURL.lastPathComponent)")
+        }
+        
+        do {
+            audioFile = try AVAudioFile(forWriting: outputURL, settings: settings)
+            logger.info("✅ System audio file created successfully (delayed): \(outputURL.path)")
+        } catch {
+            logger.error("❌ Failed to create system audio file (delayed): \(error)")
+            logger.error("   URL: \(outputURL.path)")
+            logger.error("   Settings: \(settings)")
+            throw RecordingError.setupFailed("Failed to create system audio file (delayed): \(error.localizedDescription)")
+        }
+        
+        logger.info("System audio file setup completed (delayed)")
+    }
+    
     private func setupMicrophoneAudioEngine(outputURL: URL) throws {
         logger.info("🎤 Creating microphone audio engine...")
         
@@ -566,6 +679,16 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         logger.info("✅ Microphone audio engine setup completed")
     }
     
+    // MARK: - Audio Session Configuration
+    
+    private func configureAudioSessionForMixedRecording() throws {
+        logger.info("🔧 Configuring audio for mixed recording (macOS)...")
+        
+        // macOSでは明示的なオーディオセッション設定は不要
+        // 代わりに十分な待機時間を設けて競合を避ける
+        logger.info("✅ Audio configuration for macOS mixed recording prepared")
+    }
+    
     // MARK: - Mixed Recording Implementation
     
     private func startMixedRecording() async throws {
@@ -574,6 +697,9 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         }
         
         logger.info("Starting mixed recording (system audio + microphone)...")
+        
+        // オーディオセッションを設定（ミックス録音用）
+        try configureAudioSessionForMixedRecording()
         
         // 両方の権限をチェック
         let hasSystemPermission = await checkRecordingPermission()
@@ -622,21 +748,23 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
     private func startDualRecording(systemURL: URL, micURL: URL) async throws {
         logger.info("🔧 Setting up dual recording...")
         
-        // 順次セットアップ（同時実行による競合を避ける）
-        logger.info("📻 Setting up system audio capture...")
-        try await setupSystemAudioCapture(outputURL: systemURL)
-        logger.info("✅ System audio capture setup complete")
-        
-        // 少し待機してからマイクをセットアップ
-        try await Task.sleep(nanoseconds: 200_000_000) // 200ms待機
-        
-        logger.info("🎤 Setting up microphone recording...")
+        // 最初にマイクをセットアップ（AVAudioEngine初期化）
+        logger.info("🎤 Setting up microphone recording first...")
         try setupMicrophoneAudioEngine(outputURL: micURL)
         logger.info("✅ Microphone recording setup complete")
         
-        // マイク録音エンジンを開始（分離されたエンジンを使用）
+        // マイク録音エンジンを先に開始
         logger.info("🚀 Starting microphone audio engine...")
         try microphoneEngine?.start()
+        logger.info("✅ Microphone engine started")
+        
+        // マイクエンジンが完全に開始されるのを待つ
+        try await Task.sleep(nanoseconds: 1_000_000_000) // 1秒待機
+        
+        logger.info("📻 Setting up system audio capture...")
+        try await setupSystemAudioCaptureForMixedRecording(outputURL: systemURL)
+        logger.info("✅ System audio capture setup complete")
+        
         logger.info("✅ Dual recording setup completed successfully")
     }
     
@@ -667,6 +795,8 @@ public class SystemAudioRecorder: NSObject, ObservableObject, SCStreamDelegate, 
         audioFile = nil
         microphoneFile = nil
         microphoneEngine = nil
+        pendingSystemFileURL = nil
+        shouldCreateSystemFile = false
         
         // 音声ファイルをミックス
         guard let systemURL = systemTempURL,
@@ -860,6 +990,18 @@ extension SystemAudioRecorder {
                 if self.lastAudioLogTime == nil {
                     self.logger.info("📻 System audio capture active: \(frameCount) frames received")
                     self.lastAudioLogTime = Date()
+                    
+                    // 遅延ファイル作成を実行
+                    if self.shouldCreateSystemFile, let url = self.pendingSystemFileURL {
+                        do {
+                            try self.setupSystemAudioFileDelayed(outputURL: url)
+                            self.shouldCreateSystemFile = false
+                            self.pendingSystemFileURL = nil
+                            self.logger.info("✅ System audio file created on first sample")
+                        } catch {
+                            self.logger.error("❌ Failed to create system audio file on first sample: \(error)")
+                        }
+                    }
                 }
             }
         }
