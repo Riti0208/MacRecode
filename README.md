@@ -27,12 +27,13 @@ MacRecodeは、macOS上でシステム音声とマイク音声を録音できる
 ## 🛠️ 技術要件
 
 ### システム要件
-- **macOS**: 13.0 (Ventura) 以降
+- **macOS**: 14.0 (Sonoma) 以降 ⚠️ **Updated for CATap API**
 - **Xcode**: 15.0 以降
 - **Swift**: 5.0 以降
 
 ### 使用技術
 - **SwiftUI**: ユーザーインターフェース
+- **Core Audio HAL**: CATap API によるシステム音声キャプチャ (macOS 14.0+) ✨ **NEW**
 - **ScreenCaptureKit**: システム音声キャプチャ (macOS 13.0+)
 - **AVFoundation**: マイク音声録音とファイル処理
 - **AVAudioEngine**: 音声データ処理
@@ -141,6 +142,15 @@ swift test --filter SystemAudioRecorderTests
 - セキュリティベストプラクティスの遵守
 
 ## 🔒 セキュリティ
+
+### セキュリティ強化 (v1.0.0) ✅
+- ✅ **Version Compatibility**: macOS 14.0要件へ更新
+- ✅ **Real CATap API**: 完全なCore Audio HAL実装
+- ✅ **Threading**: 専用audioQueueによる並行処理
+- ✅ **Path Validation**: ディレクトリトラバーサル攻撃対策
+- ✅ **Test Coverage**: セキュリティ・パフォーマンステスト完備
+- ✅ **Error Handling**: 詳細なCore Audioエラーマッピング
+- ✅ **Resource Management**: 適切なクリーンアップ処理
 
 ### プライバシー保護
 - 録音データはローカルに保存
