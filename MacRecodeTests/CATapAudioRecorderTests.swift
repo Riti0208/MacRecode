@@ -221,6 +221,67 @@ class CATapAudioRecorderTests: XCTestCase {
         try? FileManager.default.removeItem(at: testURL)
     }
     
+    // MARK: - 実際のCore Audio HAL APIテスト (TDD - RED)
+    
+    func testRealCoreAudioTapCreation() async throws {
+        // RED: このテストは実際のCore Audio HAL APIが実装されるまで失敗する
+        
+        // 実際のTAP作成をテスト
+        try await recorder.setupCATap()
+        
+        // 実際のCore Audio TAP IDが返されることを確認
+        // シミュレーションではなく、実際のCore Audio HALから返されるTAP ID
+        let tapID = recorder.tapObjectID
+        XCTAssertNotEqual(tapID, 0)
+        
+        // 実際のTAP作成が成功したことを検証
+        // Core Audio HAL APIから実際のTAPが作成されているかをチェック
+        let isRealTap = try CoreAudioUtilities.verifyRealTapExists(tapID: tapID, on: recorder.targetOutputDevice)
+        XCTAssertTrue(isRealTap, "TAP should be created using real Core Audio HAL API, not simulation")
+    }
+    
+    func testRealAudioStreamCapture() async throws {
+        // RED: 実際のオーディオストリームがキャプチャされることをテスト
+        
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let testURL = documentsPath.appendingPathComponent("real_audio_capture_test.caf")
+        
+        // 実際の録音開始
+        try await recorder.startSynchronizedRecording(to: testURL)
+        
+        // システム音声が実際にキャプチャされていることを確認
+        // 実際のオーディオバッファが生成されるまで待機
+        try await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+        
+        // 実際のオーディオデータがキャプチャされているかを確認
+        let hasRealAudioData = try CoreAudioUtilities.verifyRealAudioCapture(from: recorder.tapObjectID)
+        XCTAssertTrue(hasRealAudioData, "Real audio data should be captured from system output")
+        
+        try await recorder.stopRecording()
+        try? FileManager.default.removeItem(at: testURL)
+    }
+    
+    func testHardwareTapIntegration() async throws {
+        // RED: ハードウェアレベルでのTAP統合をテスト
+        
+        try await recorder.setupCATap()
+        
+        // ハードウェアレベルでTAPが統合されていることを確認
+        let outputDevice = recorder.targetOutputDevice
+        let tapID = recorder.tapObjectID
+        
+        // 実際のCore Audio HAL APIでTAPがデバイスに接続されているかを確認
+        let isTapConnected = try CoreAudioUtilities.verifyTapConnectedToDevice(
+            tapID: tapID, 
+            deviceID: outputDevice
+        )
+        XCTAssertTrue(isTapConnected, "TAP should be connected to hardware device via Core Audio HAL")
+        
+        // TAP経由で実際のオーディオフローが確立されているかを確認
+        let audioFlowActive = try CoreAudioUtilities.verifyAudioFlowActive(from: tapID)
+        XCTAssertTrue(audioFlowActive, "Audio flow should be active through hardware TAP")
+    }
+    
     // MARK: - パフォーマンステスト
     
     func testSetupPerformance() {

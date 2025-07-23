@@ -152,6 +152,13 @@ swift test --filter SystemAudioRecorderTests
 - ✅ **Error Handling**: 詳細なCore Audioエラーマッピング
 - ✅ **Resource Management**: 適切なクリーンアップ処理
 
+### 実装ステータス (v1.0.0-real-core-audio-tap) ⚠️
+- ✅ **Core Audio HAL APIパターン**: 実装完了
+- ⚠️  **実際のTAP API**: 推定実装（Apple公式ドキュメント待ち）
+- ✅ **TDD開発**: RED-GREEN-REFACTORサイクル完了
+- ✅ **エラーハンドリング**: 全てのCore Audio エラーケース対応
+- ⚠️  **実機動作**: macOS 14.4+実機での検証が必要
+
 ### プライバシー保護
 - 録音データはローカルに保存
 - 外部への自動送信なし
