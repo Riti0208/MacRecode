@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "MacRecode",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "MacRecode", targets: ["MacRecode"])
