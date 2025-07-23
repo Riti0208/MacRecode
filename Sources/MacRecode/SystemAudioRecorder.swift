@@ -3,25 +3,7 @@ import AVFoundation
 import ScreenCaptureKit
 import OSLog
 
-public enum RecordingError: LocalizedError {
-    case permissionDenied
-    case noDisplayFound
-    case setupFailed
-    case recordingInProgress
-    
-    public var errorDescription: String? {
-        switch self {
-        case .permissionDenied:
-            return "画面収録の権限が必要です"
-        case .noDisplayFound:
-            return "録音可能なディスプレイが見つかりませんでした"
-        case .setupFailed:
-            return "録音の設定に失敗しました"
-        case .recordingInProgress:
-            return "録音が既に開始されています"
-        }
-    }
-}
+// RecordingError and RecordingMode are now defined in AudioRecordingTypes.swift
 
 @MainActor
 public class SystemAudioRecorder: ObservableObject {
@@ -43,7 +25,7 @@ public class SystemAudioRecorder: ObservableObject {
         // 権限チェック
         let hasPermission = await checkRecordingPermission()
         guard hasPermission else {
-            throw RecordingError.permissionDenied
+            throw RecordingError.permissionDenied("Screen recording permission required")
         }
         
         // 録音ファイルのURLを生成

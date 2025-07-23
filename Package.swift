@@ -7,12 +7,17 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "MacRecode", targets: ["MacRecode"])
+        .library(name: "MacRecode", targets: ["MacRecode"]),
+        .executable(name: "MacRecodeApp", targets: ["MacRecodeApp"])
     ],
     targets: [
-        .executableTarget(
+        .target(
             name: "MacRecode",
             dependencies: []
+        ),
+        .executableTarget(
+            name: "MacRecodeApp",
+            dependencies: ["MacRecode"]
         ),
         .testTarget(
             name: "MacRecodeTests",
